@@ -17,3 +17,6 @@ media/
 
 # Test files
 test.py
+
+# Redis
+*.rdb

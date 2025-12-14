@@ -2,8 +2,11 @@ from documents.models import Document, DocumentChunk
 from documents.utils.extract_text import extract_text, save_extracted_text
 from documents.utils.chunking import chunk_text
 from documents.utils.embeddings import embed_texts
+from documents.tasks_summary import generate_summary_task
 from celery import shared_task
 import logging
+
+logger = logging.getLogger("documents")
 
 @shared_task
 def process_document(document_id):
@@ -49,6 +52,9 @@ def process_document(document_id):
         # Generate embeddings for the chunks
         logger.info(f"[process_document] Triggering embedding task for doc {document_id}")
         generate_embeddings_task.delay(document_id)
+
+        logger.info(f"[process_document] Triggering summarization task for doc {document_id}")
+        generate_summary_task.delay(document_id)
 
         logger.info(f"[process_document] Completed: {document_id}")
 

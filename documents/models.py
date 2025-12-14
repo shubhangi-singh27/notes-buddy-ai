@@ -23,6 +23,10 @@ class Document(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    short_summary = models.TextField(blank=True, null=True)
+    detailed_summary = models.TextField(blank=True, null=True)
+    summary_generated_at = models.DateTimeField(blank=True, null=True)
+
     def __str__(self):
         return f"{self.original_file_name}: {self.status}"
 
@@ -49,3 +53,16 @@ class DocumentChunk(models.Model):
 
     def __str__(self):
         return f"Chunk {self.chunk_index} of {self.document.original_file_name}"
+
+    @property
+    def has_embedding(self):
+        return self.embedding is not None
+
+class SummaryHistory(models.Model):
+    document = models.ForeignKey(Document, on_delete=models.CASCADE, related_name="summary_history")
+    short_summary = models.TextField(blank=True, null=True)
+    detailed_summary = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Summary for {self.document.original_file_name}"
