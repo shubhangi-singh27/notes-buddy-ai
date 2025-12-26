@@ -6,7 +6,8 @@ from rest_framework import status
 
 from documents.models import Document
 from documents.serializers.serializers_summary import DocumentSummarySerializer, SummaryRegenerationSerializer
-from documents.tasks import generate_summary_task
+from documents.tasks_summary import generate_summary_task
+from notes_buddy.core.middleware import get_request_id
 
 class DocumentSummaryView(APIView):
     permission_classes = [IsAuthenticated]
@@ -40,7 +41,8 @@ class RegenerateSummaryView(APIView):
                 status=status.HTTP_404_NOT_FOUND
             )
 
-        generate_summary_task.delay(doc.id)
+        request_id = get_request_id()
+        generate_summary_task.delay(doc.id, request_id=request_id)
 
         return Response({
             "message": "Summary regeneration initiated.",

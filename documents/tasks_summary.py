@@ -1,5 +1,6 @@
 import logging
 import re
+import os
 from celery import shared_task
 from django.utils import timezone
 from openai import OpenAI
@@ -8,10 +9,17 @@ from django.conf import settings
 from documents.models import Document, SummaryHistory
 
 logger = logging.getLogger("summary")
-client = OpenAI(api_key=settings.OPENAI_API_KEY)
+
+openai_api_key = os.getenv("OPENAI_API_KEY") or getattr(settings, "OPENAI_API_KEY", None)
+
+client = OpenAI(api_key=openai_api_key)
 
 @shared_task
-def generate_summary_task(document_id):
+def generate_summary_task(document_id, request_id=None):
+    if request_id:
+        from notes_buddy.core.middleware import _request_id
+        _request_id.value = request_id
+
     try:
         doc = Document.objects.get(id=document_id)
     except Document.DoesNotExist:
@@ -55,7 +63,7 @@ def generate_summary_task(document_id):
 
 
         if "Detailed Summary" in full_output or "detailed_summary" in full_output:
-            match = re.search(f'[Dd]etailed [Ss]ummary[:\s]*', full_output)
+            match = re.search(r'[Dd]etailed [Ss]ummary[:\s]*', full_output)
             if match:
                 split_pos = match.end()
                 short = full_output[:split_pos].replace("Short Summary", "").replace("Short summary", "").strip()

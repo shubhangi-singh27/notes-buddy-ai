@@ -5,11 +5,16 @@ from documents.utils.embeddings import embed_texts
 from documents.tasks_summary import generate_summary_task
 from celery import shared_task
 import logging
+import time
 
 logger = logging.getLogger("documents")
 
-@shared_task
-def process_document(document_id):
+@shared_task(bind=True, autoretry_for=(Exception,), retry_backoff=30, retry_kwargs={"max_retries": 3})
+def process_document(self, document_id, request_id=None):
+    if request_id:
+        from notes_buddy.core.middleware import _request_id
+        _request_id.value = request_id
+
     logger.info(f"[process_document] Started for document {document_id}")
     try:
         doc = Document.objects.get(id=document_id)
@@ -51,10 +56,10 @@ def process_document(document_id):
 
         # Generate embeddings for the chunks
         logger.info(f"[process_document] Triggering embedding task for doc {document_id}")
-        generate_embeddings_task.delay(document_id)
+        generate_embeddings_task.delay(document_id, request_id)
 
         logger.info(f"[process_document] Triggering summarization task for doc {document_id}")
-        generate_summary_task.delay(document_id)
+        generate_summary_task.delay(document_id, request_id)
 
         logger.info(f"[process_document] Completed: {document_id}")
 
@@ -67,7 +72,11 @@ def process_document(document_id):
         return {"status": "failed", "document_id": doc.id}
 
 @shared_task
-def generate_embeddings_task(document_id):
+def generate_embeddings_task(document_id, request_id=None):
+    if request_id:
+        from notes_buddy.core.middleware import _request_id
+        _request_id.value = request_id
+
     logger.info(f"[embedding] Started for doc {document_id}")
     try:
         chunks = DocumentChunk.objects.filter(document_id=document_id).order_by("chunk_index")
@@ -79,8 +88,14 @@ def generate_embeddings_task(document_id):
             logger.warning(f"[embedding] No chunks found for doc {document_id}")
             return False
 
+        start = time.time()
         vectors = embed_texts(texts)
-        logger.info(f"[embedding] Embeddings generated successfully")
+        logger.info(f"[embedding] Embeddings generated successfully",
+                    extra={
+                        "document_id": document_id,
+                        "duration": round(time.time() - start, 2),
+                        "chunks": len(texts)
+                    })
 
         for chunk, vector in zip(chunks, vectors):
             chunk.embedding = vector

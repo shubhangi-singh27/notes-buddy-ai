@@ -14,6 +14,7 @@ from documents.serializers.serializers import (
     DocumentDetailSerializer
 )
 from documents.models import Document
+from notes_buddy.core.middleware import get_request_id
 
 
 class DocumentUploadView(APIView):
@@ -28,6 +29,7 @@ class DocumentUploadView(APIView):
         if serializer.is_valid():
             doc = serializer.save()
 
+            request_id = get_request_id()
             process_document.delay(doc.id)
 
             return Response(

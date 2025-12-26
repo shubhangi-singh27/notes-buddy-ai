@@ -24,7 +24,9 @@ load_dotenv(BASE_DIR / '.env')
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-xa=nye^2y%xlbm=@-#1_5wz=0_14j*$d!%pvnx3z1-ul2i6g=5'
+SECRET_KEY = os.getenv("SECRET_KEY")
+if not SECRET_KEY:
+    raise ValueError("SECRET_KEY is not set")
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
@@ -44,10 +46,12 @@ INSTALLED_APPS = [
     "rest_framework",
     "users",
     "documents",
-    "search"
+    "search",
+    "health"
 ]
 
 MIDDLEWARE = [
+    'notes_buddy.core.middleware.RequestIDMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -168,13 +172,22 @@ LOGGING = {
     "disable_existing_loggers": False,
     "handlers": {
         "console": {
-            "class": "logging.StreamHandler"
+            "class": "logging.StreamHandler",
+            "formatter": "verbose",
+            "filters": ["request_id"],
         }
     },
     "formatters": {
         "verbose":{
-            "format": "[{levelname}] {asctime} {name}: {message}",
-            "style": "{"
+            "format": (
+                "%(asctime)s | %(levelname)s | %(name)s | "
+                "request_id=%(request_id)s | %(message)s"
+            )
+        }
+    },
+    "filters": {
+        "request_id": {
+            "()": "notes_buddy.core.logging.RequestIDLogFilter",
         }
     },
     "root": {
@@ -183,6 +196,16 @@ LOGGING = {
     },
     "loggers": {
         "documents": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        "search": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        "summary": {
             "handlers": ["console"],
             "level": "INFO",
             "propagate": False,

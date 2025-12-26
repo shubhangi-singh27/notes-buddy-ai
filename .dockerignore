@@ -1,0 +1,66 @@
+# Environment and secrets (CRITICAL!)
+.env
+.env.local
+.env.*.local
+*.env
+
+# Python cache and compiled files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.eggs/
+dist/
+build/
+wheels/
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# Media files (user uploads - use volumes instead)
+media/
+media/*
+
+# Redis dump files
+*.rdb
+dump.rdb
+
+# Test files
+test.py
+tests/
+*_test.py
+test_*.py
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Database files (if any local SQLite dbs)
+*.db
+*.sqlite
+*.sqlite3
+
+# Temporary files
+*.tmp
+*.temp
+.cache/

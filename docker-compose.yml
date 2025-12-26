@@ -1,0 +1,49 @@
+services:
+  web:
+    build: .
+    container_name: notes_buddy_web
+    command: python manage.py runserver 0.0.0.0:8000
+    volumes:
+      - .:/app
+      - ./media:/app/media
+      - venv:/app/.venv
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    depends_on:
+      - redis
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  celery:
+    build: .
+    container_name: notes_buddy_celery
+    command: celery -A notes_buddy worker --loglevel=info
+    volumes:
+      - .:/app
+      - ./media:/app/media
+      - venv:/app/.venv
+    env_file:
+      - .env
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  redis:
+    image: redis:7-alpine
+    container_name: notes_buddy_redis
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  venv:
