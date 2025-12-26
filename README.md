@@ -23,7 +23,7 @@ This backend implements a full **RAG (Retrieval Augmented Generation)** pipeline
 - Stores embeddings in **pgvector** column
 - Search using `<=>` vector similarity operator
 
-### 🔹 Semantic Search
+### 🔹 Semantic Search + Answering
 - User asks a question
 - System embeds the query
 - Retrieves top relevant chunks
@@ -39,10 +39,17 @@ Powered by **Celery + Redis**:
 ### 🔹 Authentication
 - Secure JWT authentication using SimpleJWT
 
+### 🔹 Operational Hardening
+- Dockerized backend
+- Health check endpoint
+- Structured logging
+- Graceful failure handling in Celery tasks
+
 ---
 
 ## 🏗️ Tech Stack
 
+- **Python 3.12**
 - **Django 5**
 - **Django Rest Framework**
 - **PostgreSQL 16**
@@ -51,6 +58,8 @@ Powered by **Celery + Redis**:
 - **Celery 5**
 - **OpenAI API**
 - **PyPDF + python-docx**
+- **Docker + Docker Compose**
+- **uv (Python package manager)**
 - **WSL Ubuntu 24.04**
 
 ---
@@ -60,17 +69,21 @@ Powered by **Celery + Redis**:
 ```
 notes_buddy/
 ├── documents/
+├── health/
 ├── search/
 ├── users/
 ├── notes_buddy/  # Django settings
-└── manage.py
+├── manage.py
+├── Dockerfile
+├──docker-compose.yml
+└──pyproject.toml
 ```
 
 ---
 
 # ▶️ Project Setup
 
-Follow these steps to run the project locally.
+Option A: Local Setup
 
 ---
 
@@ -94,11 +107,37 @@ uv run python manage.py runserver
 
 ```
 
+Option B: Docker Setup
+
+---
+
+## 1️⃣ Clone the Repository
+
+```bash
+git clone https://github.com/your-username/notes_buddy.git
+cd notes_buddy
+
+cp .env.example .env
+
+docker compose build # First time only
+
+docker compose run web python manage.py migrate # First time only
+
+docker compose up
+
+```
+
 Backend now runs at:
 
 http://127.0.0.1:8000/
 
+Health check:
+
+GET http://localhost:8000/api/health/
+
 ---
+
+
 
 ## 🔍 API Endpoints
 
@@ -135,16 +174,18 @@ This backend currently supports:
 - Vector storage  
 - Semantic search  
 - GPT answering  
+- Automatic summaries
 - Full async RAG pipeline  
+- Dockerized development setup
 
 Next steps include:
 
 - React frontend  
 - UI for uploaded documents 
-- Summaries  
-- OCR for handwriting  
 - AWS S3 storage for uploaded files  
-- Docker deployment  
+- OCR for handwriting  
+- Production deployment (Gunicorn + Nginx)
+- API rate limiting and API key pooling
 
 ---
 
