@@ -1,15 +1,24 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
+import {BrowserRouter, Routes, Route} from "react-router-dom";
+import ProtectedRoute from "./auth/ProtectedRoute";
+import LoginPage from "./pages/LoginPage";
+import Dashboard from "./pages/Dashboard";
 
-export default function App() {
+function App(){
   return (
-    <div className="min-h-screen bg-slate-900 text-white flex items-center justify-center">
-      <h1 className="text-4xl font-bold text-emerald-400">
-        Tailwind v4 working ✅
-      </h1>
-    </div>
-  );
+    <BrowserRouter>
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route
+          path = "/"
+          element = {
+            <ProtectedRoute>
+              <Dashboard />
+            </ProtectedRoute>
+          }
+        />
+      </Routes>
+    </BrowserRouter>
+  )
 }
 
+export default App;
