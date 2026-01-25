@@ -6,10 +6,11 @@ from documents.tasks_summary import generate_summary_task
 from celery import shared_task
 import logging
 import time
+from billiard.exceptions import SoftTimeLimitExceeded
 
 logger = logging.getLogger("documents")
 
-@shared_task(bind=True, autoretry_for=(Exception,), retry_backoff=30, retry_kwargs={"max_retries": 3})
+@shared_task(bind=True, autoretry_for=(Exception,), retry_backoff=30, retry_kwargs={"max_retries": 3}, soft_time_limit=180,)
 def process_document(self, document_id, request_id=None):
     if request_id:
         from notes_buddy.core.middleware import _request_id
@@ -35,7 +36,7 @@ def process_document(self, document_id, request_id=None):
 
         doc.extracted_text = text
         doc.status = "extracted"
-        doc.save()
+        doc.save(update_fields=["extracted_text", "status"])
 
         # Delete existing chunks for this document
         DocumentChunk.objects.filter(document=doc).delete()
@@ -58,13 +59,13 @@ def process_document(self, document_id, request_id=None):
         logger.info(f"[process_document] Triggering embedding task for doc {document_id}")
         generate_embeddings_task.delay(document_id, request_id)
 
-        logger.info(f"[process_document] Triggering summarization task for doc {document_id}")
-        generate_summary_task.delay(document_id, request_id)
+        return {"status": "embedded", "document_id": doc.id}
 
-        logger.info(f"[process_document] Completed: {document_id}")
-
-        return {"status": "success", "document_id": doc.id}
-
+    except SoftTimeLimitExceeded:
+        logger.warning(f"[process_document] Soft time limit exceeded for document {document_id}")
+        Document.objects.filter(id=document_id).update(status="processing_delayed")
+        raise
+    
     except Exception as e:
         logger.exception(f"Error processing document {doc.original_file_name}: {e}")
         doc.status = "error"
@@ -77,20 +78,20 @@ def generate_embeddings_task(document_id, request_id=None):
         from notes_buddy.core.middleware import _request_id
         _request_id.value = request_id
 
-    logger.info(f"[embedding] Started for doc {document_id}")
+    logger.info(f"[generate_embeddings_task] Started for doc {document_id}")
     try:
         chunks = DocumentChunk.objects.filter(document_id=document_id).order_by("chunk_index")
         texts = [c.text for c in chunks]
 
-        logger.info(f"[embedding] Found {len(texts)} chunks to embed")
+        logger.info(f"[generate_embeddings_task] Found {len(texts)} chunks to embed")
 
         if not texts:
-            logger.warning(f"[embedding] No chunks found for doc {document_id}")
+            logger.warning(f"[generate_embeddings_task] No chunks found for doc {document_id}")
             return False
 
         start = time.time()
         vectors = embed_texts(texts)
-        logger.info(f"[embedding] Embeddings generated successfully",
+        logger.info(f"[generate_embeddings_task] Embeddings generated successfully",
                     extra={
                         "document_id": document_id,
                         "duration": round(time.time() - start, 2),
@@ -101,10 +102,20 @@ def generate_embeddings_task(document_id, request_id=None):
             chunk.embedding = vector
             chunk.save(update_fields=["embedding"])
 
+        Document.objects.filter(id=document_id).update(status="embedded")
+        logger.info(f"[generate_embeddings_task] Saved all embeddings for doc {document_id} in {round(time.time() - start, 2)} seconds")
 
-        logger.info(f"[embedding] Saved all embeddings for doc {document_id}")
+        mark_document_ready.delay(document_id, request_id)
         return True
 
     except Exception as e:
-        logger.exception(f"Embedding generation failed for document {document_id}: {e}")
+        logger.exception(f"[generate_embeddings_task] Embedding generation failed for document {document_id}: {e}")
         return False
+
+@shared_task
+def mark_document_ready(document_id, request_id=None):
+    Document.objects.filter(id=document_id).update(status="ready")
+
+    logger.info(f"[mark_document_ready] Document {document_id} marked as ready")
+
+    generate_summary_task.delay(document_id, request_id)

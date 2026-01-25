@@ -19,8 +19,8 @@ export default function LoginPage(){
                 username, 
                 password,
             });
-            login(res.data.access);
-            navigate("/");
+            login(res.data.access, res.data.refresh); // Save token to localStorage
+            navigate("/");  // Redirect to dashboard
         } catch(err) {
             const errorMessage = err.response?.data?.detail ||
                                 err.response?.data?.message ||
