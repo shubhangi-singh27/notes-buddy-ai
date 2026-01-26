@@ -15,3 +15,7 @@ export const uploadDocument = async(file) => {
 
     return res.data;
 }
+
+export const getDocumentDetail = (id) => {
+    return api.get(`/documents/${id}/`);
+}

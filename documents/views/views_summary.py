@@ -21,7 +21,7 @@ class DocumentSummaryView(APIView):
 class RegenerateSummaryView(APIView):
     permission_classes = [IsAuthenticated]
 
-    def post(Self, request, document_id):
+    def post(self, request, document_id):
         serializer = SummaryRegenerationSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 

@@ -14,6 +14,36 @@ openai_api_key = os.getenv("OPENAI_API_KEY") or getattr(settings, "OPENAI_API_KE
 
 client = OpenAI(api_key=openai_api_key)
 
+def clean_summary_text(text):
+    """Remove redundant heading keywords and formatting from summary text"""
+    if not text:
+        return text
+
+    text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)
+
+    text = re.sub(r'\*\*([^*]+)\*\*', r'\1', text)
+
+    patterns_to_remove = [
+        r'^\s*\*\*?Very\s:?\s*\*\*?\s*',
+        r'^\s*Very\s:?\s*',
+        r'^s*\*\*?Short\s+[Ss]ummary\s*:?\s*\*\*?\s*',
+        r'^\s*Short\s+[Ss]ummary\s*:?\s*',
+        r'^\s*\*\*?[Dd]etailed\s+[Ss]ummary\s*:?\s*\*\*?\s*',
+        r'^\s*[Dd]etailed\s+[Ss]ummary\s*:?\s*',
+        r'^\s*\*\*?[Ss]ummary\s*:?\s*\*\*?\s*',
+        r'^\s*[Ss]ummary\s*:?\s*',
+        r'Very\s+',
+        r'[Dd]etailed\s+[Ss]ummary',
+    ]
+
+    cleaned = text
+    for pattern in patterns_to_remove:
+        cleaned = re.sub(pattern, '', cleaned, flags=re.MULTILINE | re.IGNORECASE)
+
+    cleaned = cleaned.strip().lstrip(':').lstrip('-').strip()
+
+    return cleaned
+
 @shared_task
 def generate_summary_task(document_id, request_id=None):
     if request_id:
@@ -43,8 +73,10 @@ def generate_summary_task(document_id, request_id=None):
                 {
                     "role": "user",
                     "content": f"""Summarize the following document at 2 levels:
-                    1. A very short summary (3-4 sentences)
-                    2. A detailed summary (5-6 bullet points)
+                    1. A very short summary (3-4 sentences) - no heading, just the summary text
+                    2. A detailed summary (5-6 bullet points) - no heading, just the summary text
+
+                    Do not include any headings, labels, or prefixes like "Short Summary:" or "Detailed Summary:", etc. Just provide the summary content directly.
                     
                     Document Text:
                     {doc.extracted_text[:15000]}
@@ -66,14 +98,14 @@ def generate_summary_task(document_id, request_id=None):
             match = re.search(r'[Dd]etailed [Ss]ummary[:\s]*', full_output)
             if match:
                 split_pos = match.end()
-                short = full_output[:split_pos].replace("Short Summary", "").replace("Short summary", "").strip()
-                detailed = full_output[split_pos:].strip()
+                short = clean_summary_text(full_output[:split_pos])
+                detailed = clean_summary_text(full_output[split_pos:])
             else:
-                short = full_output[:300].strip()
-                detailed = full_output.strip()
+                short = clean_summary_text(full_output[:300])
+                detailed = clean_summary_text(full_output)
         else:
-            short = full_output[:300].strip()
-            detailed = full_output.strip()
+            short = clean_summary_text(full_output[:300])
+            detailed = clean_summary_text(full_output)
 
         if doc.summary_generated_at:
             SummaryHistory.objects.create(

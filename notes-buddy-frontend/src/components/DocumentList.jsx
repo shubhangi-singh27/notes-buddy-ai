@@ -1,3 +1,5 @@
+import { Link } from "react-router-dom";
+
 export default function DocumentList({ documents }) {
     const formatDate = (dateString) => {
         if (!dateString) return "N/A";
@@ -28,8 +30,9 @@ export default function DocumentList({ documents }) {
 
             <ul className="space-y-2">
                 {documents.map((doc) => (
-                    <li
+                    <Link
                         key={doc.id}
+                        to={`/documents/${doc.id}`}
                         className="border p-3 rounded flex justify-between"
                     >
                         <div className="flex-1">
@@ -38,10 +41,11 @@ export default function DocumentList({ documents }) {
                                 Uploaded {formatDate(doc.created_at)}
                             </div>
                         </div>
+
                         <span className="text-sm text-gray-600">
                             {doc.status}
                         </span>
-                    </li>
+                    </Link>
                 ))}
             </ul>
         </div>
