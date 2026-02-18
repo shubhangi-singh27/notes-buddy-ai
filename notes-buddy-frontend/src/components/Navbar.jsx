@@ -1,5 +1,5 @@
 import { useAuth } from "../auth/AuthContext"
-import { useNavigate } from "react-router-dom"
+import { useNavigate, Link } from "react-router-dom"
 
 export default function Navbar() {
     const { user, logout, loading } = useAuth();
@@ -15,6 +15,7 @@ export default function Navbar() {
             <div className="font-semibold text-lg">
                 Notes Buddy
             </div>
+            <Link to="/ask" className="font-medium text-blue-600">Ask Notes Buddy</Link>
 
             {user && (
                 <div className="flex items-center gap-4">

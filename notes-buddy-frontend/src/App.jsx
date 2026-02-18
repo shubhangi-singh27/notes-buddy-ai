@@ -3,6 +3,7 @@ import { AuthProvider } from "./auth/AuthContext";
 import ProtectedRoute from "./auth/ProtectedRoute";
 import LoginPage from "./pages/LoginPage";
 import Dashboard from "./pages/Dashboard";
+import Ask from "./pages/Ask";
 import DocumentDetail from "./pages/DocumentDetail";
 import Layout from "./components/Layout";
 
@@ -11,6 +12,7 @@ function App(){
     <AuthProvider>
       <BrowserRouter>
         <Routes>
+          <Route path="/ask" element={<Ask />} />
           <Route path="/login" element={<LoginPage />} />
           <Route 
             path = "/"

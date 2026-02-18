@@ -30,7 +30,7 @@ def embed_query(query: str):
         logger.exception(f"[embed_query] Failed to embed query: {e}")
         raise RuntimeError(f"Failed to embed query: {e}")
 
-def search_similar_chunks(user, query_vector, top_k=5):
+def search_similar_chunks(user, query_vector, top_k=5, document_id=None):
     if not isinstance(query_vector, list) or len(query_vector) != 1536:
         raise ValueError("Query vector must be python list of length 1536")
 
@@ -47,10 +47,11 @@ def search_similar_chunks(user, query_vector, top_k=5):
             FROM documents_documentchunk dc
             JOIN documents_document d ON dc.document_id = d.id
             WHERE d.user_id = %s
+                AND (%s IS NULL OR d.id = %s)
             ORDER BY dc.embedding <=> %s::vector
             LIMIT %s;
             """,
-            [query_vector, user.id, query_vector, top_k]
+            [query_vector, user.id, document_id, document_id, query_vector, top_k]
         )
 
         rows = cursor.fetchall()
@@ -67,6 +68,58 @@ def search_similar_chunks(user, query_vector, top_k=5):
         })
 
     return results
+
+def rerank_chunks(question, chunks, keep_top=4):
+    if not chunks:
+        return []
+
+    numbered_chunks = ""
+    for i, c in enumerate(chunks):
+        numbered_chunks += f"""
+        Chunk {i}:
+        {c["text"][:800]}
+        """
+
+        prompt = f"""
+        You are helping select context for answering a question.
+
+        Question:
+        {question}
+
+        Below are retrieved text chunks from user's notes.
+        Select the MOST relevant chunks for answering the question.
+
+        Return ONLY the chunks numbers in order of usefulness.
+        Example output: 2, 5, 1, 0
+
+        Chunks:
+        {numbered_chunks}
+        """
+
+        try:
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0
+            )
+
+            content = response.choices[0].message.content
+            try:
+                indices = [int(x.strip()) for x in content.split(",")]
+            except:
+                logger.warning("[rerank] Failed to parse rerank response")
+                return chunks[:keep_top]
+
+            selected = []
+            for idx in indices:
+                if 0 <= idx < len(chunks):
+                    selected.append(chunks[idx])
+
+            return selected[:keep_top]
+        
+        except Exception as e:
+            logger.error(f"[rerank] Failed rerank response")
+            return ""
 
 def build_prompt(chunks, question):
     context_text = "\n\n".join(
@@ -120,13 +173,19 @@ def generate_answer(retreived_chunks, question):
                 if hasattr(block, "text")
             )
 
-        sources = [
+        unique_sources = {}
+        for c in retreived_chunks:
+            unique_sources[c["document_name"]] = True
+
+        """sources = [
             {
                 "document_name": c["document_name"],
                 "chunk_index": c["chunk_index"]
             }
             for c in retreived_chunks
-        ]
+        ]"""
+
+        sources = list(unique_sources.keys())
 
         return {
             "answer": answer.strip(),

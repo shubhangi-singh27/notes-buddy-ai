@@ -1,12 +1,16 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { getDocumentDetail } from "../api/documents";
+import api from "../api/axios";
 
 export default function DocumentDetail() {
     const { id } = useParams();
     const [doc, setDoc] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
+    const [question, setQuestion] = useState("");
+    const [answer, setAnswer] = useState(null);
+    const [sources, setSources] = useState([]);
 
     useEffect(() => {
         const fetchDocument = async () => {
@@ -30,6 +34,33 @@ export default function DocumentDetail() {
 
         fetchDocument();
     }, [id]);
+
+    const handleAsk = async() => {
+        setLoading(true);
+        setError(null);
+        setAnswer(null);
+        setSources([]);
+
+        try {
+            const res = await api.post("/search/answer/", {
+                question: question,
+                document_id: id,
+            });
+
+            setAnswer(res.data.answer);
+            setSources(res.data.sources || []);
+        } catch (err) {
+            setError("Failed to get answer, Try again.")
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const isAskDisabled = 
+        loading ||
+        !doc ||
+        doc.status !== "ready" ||
+        !question.trim();
 
     if (loading) return <p>Loading Document...</p>;
     if (error) return <p className="text-red-500">{error}</p>;
@@ -64,6 +95,50 @@ export default function DocumentDetail() {
                     {doc.detailed_summary || "Detailed summary not generated yet."}
                 </p>
             </div>
+            <div className="mt-8 border-t pt-6">
+                <h2 className="text-lg font-semibold mb-2">Ask a question</h2>
+
+                <textarea
+                    value={question}
+                    onChange={(e) => setQuestion(e.target.value)}
+                    placeholder="Ask something from this document..."
+                    className="w-full border rounded p-3 mb-3"
+                    rows={3}
+                />
+
+                <button
+                    onClick={handleAsk}
+                    disabled={isAskDisabled}
+                    className="bg-black text-white px-4 py-2 rounded disabled:opacity-50"
+                >
+                    {loading ? "Thinking..." : "Ask"}
+                </button>
+
+            </div>
+
+            {error && (
+                <p className="text-red-600 mt-4">{error}</p>
+            )}
+
+            {answer && (
+                <div className="mt-6">
+                    <h3 className="font-semibold mb-2">Answer</h3>
+                    <p className="whitespace-pre-line">{answer}</p>
+
+                    {sources.length > 0 && (
+                        <div className="mt-4 text-sm text-gray-600">
+                            <p className="font-medium">Sources:</p>
+                            <ul className="list-disc ml-5">
+                                {sources.map((s, i) => (
+                                    <li key={i}>
+                                        {s.document_name} - chunk {s.chunk_index}
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                    )}
+                </div>
+            )}
         </div>
     );
 }
