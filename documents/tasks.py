@@ -42,7 +42,7 @@ def process_document(self, document_id, request_id=None):
         DocumentChunk.objects.filter(document=doc).delete()
 
         # Chunk the text
-        chunks = chunk_text(text, max_tokens=500, overlap=50)
+        chunks = chunk_text(text)
         logger.info(f"[chunk] Created {len(chunks)} chunks")
 
         for idx, chunk in enumerate(chunks):

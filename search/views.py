@@ -3,6 +3,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 
 from .services.search_engine import embed_query, search_similar_chunks, generate_answer, rerank_chunks
+from .services.context_compression import compress_context
 import logging
 
 logger = logging.getLogger(__name__)
@@ -73,6 +74,8 @@ class AnswerView(APIView):
                 break
 
         chunks = diversified
+
+        compressed_chunks = compress_context(chunks, question, query_vector)
 
         result = generate_answer(chunks, question)
 

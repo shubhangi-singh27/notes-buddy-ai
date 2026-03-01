@@ -48,6 +48,14 @@ export default function LoginPage(){
                     placeholder="Password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
+                    onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                            e.preventDefault();
+                            if (username.trim() && password.trim()) {
+                                handleSubmit(e);
+                            }
+                        }
+                    }}
                 />
 
                 <button type="submit" className="bg-black text-white px-4 py-2 w-full">

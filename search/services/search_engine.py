@@ -177,15 +177,16 @@ def generate_answer(retreived_chunks, question):
         for c in retreived_chunks:
             unique_sources[c["document_name"]] = True
 
-        """sources = [
+        sources = [
             {
                 "document_name": c["document_name"],
-                "chunk_index": c["chunk_index"]
+                "chunk_index": c["chunk_index"],
+                "text": c.get("text", "")
             }
             for c in retreived_chunks
-        ]"""
+        ]
 
-        sources = list(unique_sources.keys())
+        # sources = list(unique_sources.keys())
 
         return {
             "answer": answer.strip(),

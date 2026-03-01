@@ -36,6 +36,14 @@ export default function Ask() {
                 rows="3"
                 value={question}
                 onChange={(e) => setQuestion(e.target.value)}
+                onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        if (question.trim() && !loading) {
+                            handleAsk();
+                        }
+                    }
+                }}
                 placeholder="Ask me anything about your notes..."
             />
 

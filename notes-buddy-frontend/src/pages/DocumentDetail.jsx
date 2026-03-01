@@ -83,24 +83,20 @@ export default function DocumentDetail() {
                     )}
                 </p>
             </div>
-            <div className="mt-6">
-                <h2 className="font-semibold">Short Summary</h2>
-                <p className="text-gray-800 mt-2">
-                    {doc.short_summary || "Summary not generated yet."}
-                </p>
-            </div>
-            <div className="mt-6">
-                <h2 className="font-semibold">Detailed Summary</h2>
-                <p className="text-gray-800 mt-2 whitespace-pre-wrap">
-                    {doc.detailed_summary || "Detailed summary not generated yet."}
-                </p>
-            </div>
             <div className="mt-8 border-t pt-6">
                 <h2 className="text-lg font-semibold mb-2">Ask a question</h2>
 
                 <textarea
                     value={question}
                     onChange={(e) => setQuestion(e.target.value)}
+                    onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault();
+                            if (!isAskDisabled) {
+                                handleAsk();
+                            }
+                        }
+                    }}
                     placeholder="Ask something from this document..."
                     className="w-full border rounded p-3 mb-3"
                     rows={3}
@@ -115,11 +111,6 @@ export default function DocumentDetail() {
                 </button>
 
             </div>
-
-            {error && (
-                <p className="text-red-600 mt-4">{error}</p>
-            )}
-
             {answer && (
                 <div className="mt-6">
                     <h3 className="font-semibold mb-2">Answer</h3>
@@ -130,14 +121,42 @@ export default function DocumentDetail() {
                             <p className="font-medium">Sources:</p>
                             <ul className="list-disc ml-5">
                                 {sources.map((s, i) => (
-                                    <li key={i}>
-                                        {s.document_name} - chunk {s.chunk_index}
+                                    <li key={i} className="relative group cursor-pointer">
+                                        <span className="underline decoration-dotted">
+                                            {s.document_name} - chunk {s.chunk_index}
+                                        </span>
+                                        {s.text && (
+                                            <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-10 w-96 p-3 bg-gray-900 text-white text-xs rounded-lg shadow-lg">
+                                                <p className="font-semibold mb-1">
+                                                    {s.document_name} (chunk {s.chunk_index})
+                                                </p>
+                                                <p className="whitespace-pre-wrap max-h-96 overflow-y-auto">
+                                                    {s.text}
+                                                </p>
+                                            </div>
+                                        )}
                                     </li>
                                 ))}
                             </ul>
                         </div>
                     )}
                 </div>
+            )}
+            <div className="mt-6">
+                <h2 className="font-semibold">Short Summary</h2>
+                <p className="text-gray-800 mt-2">
+                    {doc.short_summary || "Summary not generated yet."}
+                </p>
+            </div>
+            <div className="mt-6">
+                <h2 className="font-semibold">Detailed Summary</h2>
+                <p className="text-gray-800 mt-2 whitespace-pre-wrap">
+                    {doc.detailed_summary || "Detailed summary not generated yet."}
+                </p>
+            </div>
+
+            {error && (
+                <p className="text-red-600 mt-4">{error}</p>
             )}
         </div>
     );
