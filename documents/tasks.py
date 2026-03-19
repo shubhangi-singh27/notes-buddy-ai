@@ -6,6 +6,7 @@ from documents.tasks_summary import generate_summary_task
 from celery import shared_task
 import logging
 import time
+from django.contrib.postgres.search import SearchVector
 from billiard.exceptions import SoftTimeLimitExceeded
 
 logger = logging.getLogger("documents")
@@ -52,6 +53,10 @@ def process_document(self, document_id, request_id=None):
                 text=chunk,
                 embedding=None,
             )
+
+        DocumentChunk.objects.filter(document=doc).update(
+            search_vector=SearchVector("text")
+        )
 
         print(f"Created {len(chunks)} chunks for {doc.original_file_name}")
 
@@ -100,7 +105,9 @@ def generate_embeddings_task(document_id, request_id=None):
 
         for chunk, vector in zip(chunks, vectors):
             chunk.embedding = vector
-            chunk.save(update_fields=["embedding"])
+            # chunk.save(update_fields=["embedding"]) # causing softLimit exceeded error
+
+        DocumentChunk.objects.bulk_update(chunks, ["embedding"])
 
         Document.objects.filter(id=document_id).update(status="embedded")
         logger.info(f"[generate_embeddings_task] Saved all embeddings for doc {document_id} in {round(time.time() - start, 2)} seconds")

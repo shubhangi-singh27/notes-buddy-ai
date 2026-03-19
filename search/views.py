@@ -18,7 +18,7 @@ class SemanticSearchView(APIView):
 
         vector = embed_query(query)
 
-        results = search_similar_chunks(request.user, vector)
+        results = search_similar_chunks(request.user, vector, query)
 
         return Response({
             "query": query,
@@ -41,6 +41,7 @@ class AnswerView(APIView):
             retrieved_chunks = search_similar_chunks(
                 user=request.user,
                 query_vector=query_vector,
+                question=question,
                 top_k=3,
                 document_id=document_id,   # NEW
             )
@@ -49,6 +50,7 @@ class AnswerView(APIView):
             retrieved_chunks = search_similar_chunks(
                 user=request.user,
                 query_vector=query_vector,
+                question=question,
                 top_k=12,
             )
             reranked_chunks = rerank_chunks(question, retrieved_chunks)

@@ -4,6 +4,9 @@ from openai import OpenAI
 from django.conf import settings
 from documents.models import DocumentChunk
 from django.db import connection
+from django.contrib.postgres.search import SearchQuery, SearchRank
+from django.db.models import F
+from django.db import connection
 
 logger = logging.getLogger("search")
 
@@ -30,9 +33,11 @@ def embed_query(query: str):
         logger.exception(f"[embed_query] Failed to embed query: {e}")
         raise RuntimeError(f"Failed to embed query: {e}")
 
-def search_similar_chunks(user, query_vector, top_k=5, document_id=None):
+def search_similar_chunks(user, query_vector, question, top_k=5, document_id=None):
     if not isinstance(query_vector, list) or len(query_vector) != 1536:
         raise ValueError("Query vector must be python list of length 1536")
+
+################## Vector Search ##################
 
     with connection.cursor() as cursor:
         cursor.execute(
@@ -47,6 +52,8 @@ def search_similar_chunks(user, query_vector, top_k=5, document_id=None):
             FROM documents_documentchunk dc
             JOIN documents_document d ON dc.document_id = d.id
             WHERE d.user_id = %s
+                AND d.status = 'ready'
+                AND dc.embedding IS NOT NULL
                 AND (%s IS NULL OR d.id = %s)
             ORDER BY dc.embedding <=> %s::vector
             LIMIT %s;
@@ -56,18 +63,79 @@ def search_similar_chunks(user, query_vector, top_k=5, document_id=None):
 
         rows = cursor.fetchall()
 
-    results = []
-    for row in rows:
-        results.append({
-            "chunk_id": row[0],
-            "document_id": row[1],
-            "document_name": row[2],
-            "chunk_index": row[3],
-            "text": row[4],
-            "similarity": row[5]
+        vector_results = {
+            row[0]:{
+                "chunk_id": row[0],
+                "document_id": row[1],
+                "document_name": row[2],
+                "chunk_index": row[3],
+                "text": row[4],
+                "vector_score": float(row[5]),
+                "fts_score": 0.0
+            }
+            for row in rows
+        }
+
+################## Full Text Search ##################
+
+    ts_query = SearchQuery(question, search_type="plain")
+
+    fts_queryset = (
+        DocumentChunk.objects
+        .filter(document__user=user, document__status="ready")
+        .filter(search_vector=ts_query)
+    )
+
+    if document_id:
+        fts_queryset = fts_queryset.filter(document_id=document_id)
+
+    fts_queryset = (
+        fts_queryset
+        .annotate(rank=SearchRank(F("search_vector"), ts_query))
+        .order_by("-rank")[:top_k]
+    )
+
+    for chunk in fts_queryset:
+        if chunk.id in vector_results:
+            vector_results[chunk.id]["fts_score"] = float(chunk.rank)
+        else:
+            vector_results[chunk.id] = {
+                "chunk_id": chunk.id,
+                "document_id": chunk.document_id,
+                "document_name": chunk.document.original_file_name,
+                "chunk_index": chunk.chunk_index,
+                "text": chunk.text,
+                "vector_score": 0.0,
+                "fts_score": float(chunk.rank),
+            }
+
+################## Normalize + Merge Results ##################
+    if not vector_results:
+        return []
+
+    max_vector = max(v["vector_score"] for v in vector_results.values()) or 1
+    max_fts = max(v["fts_score"] for v in vector_results.values()) or 1
+
+    merged = []
+
+    for chunk in vector_results.values():
+        norm_vector = chunk["vector_score"] / max_vector if max_vector else 0
+        norm_fts = chunk["fts_score"] / max_fts if max_fts else 0
+
+        combined_score = 0.6*norm_vector + 0.4*norm_fts
+
+        merged.append({
+            "chunk_id": chunk["chunk_id"],
+            "document_id": chunk["document_id"],
+            "document_name": chunk["document_name"],
+            "chunk_index": chunk["chunk_index"],
+            "text": chunk["text"],
+            "similarity": combined_score,
         })
 
-    return results
+    merged.sort(key=lambda x: x["similarity"], reverse=True)
+
+    return merged[:top_k]
 
 def rerank_chunks(question, chunks, keep_top=4):
     if not chunks:

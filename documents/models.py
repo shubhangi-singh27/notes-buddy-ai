@@ -2,6 +2,8 @@ import os
 from django.conf import settings
 from django.db import models
 from django.contrib.auth.models import User
+from django.contrib.postgres.search import SearchVectorField
+from django.contrib.postgres.indexes import GinIndex
 from pgvector.django import VectorField
 
 class Document(models.Model):
@@ -46,10 +48,14 @@ class DocumentChunk(models.Model):
 
     embedding = VectorField(dimensions=1536, null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    search_vector = SearchVectorField(null=True)
     
     class Meta:
         unique_together = ('document', 'chunk_index')
         ordering = ['chunk_index']
+        indexes = [
+            GinIndex(fields=['search_vector']),
+        ]
 
     def __str__(self):
         return f"Chunk {self.chunk_index} of {self.document.original_file_name}"

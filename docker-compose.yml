@@ -9,6 +9,8 @@ services:
       - venv:/app/.venv
     ports:
       - "8000:8000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     env_file:
       - .env
     depends_on:
@@ -27,6 +29,8 @@ services:
       - .:/app
       - ./media:/app/media
       - venv:/app/.venv
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     env_file:
       - .env
     restart: unless-stopped
