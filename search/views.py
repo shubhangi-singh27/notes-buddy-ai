@@ -60,7 +60,7 @@ class AnswerView(APIView):
         doc_usage = {}
 
         logger.info(
-            f"[rerank] Retrieved {len(retrieved_chunks)} chunks, kept {len(reranked_chunks)}"
+            f"Retrieved {len(retrieved_chunks)} chunks, kept {len(reranked_chunks)}"
         )
 
 

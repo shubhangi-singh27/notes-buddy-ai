@@ -26,7 +26,7 @@ def embed_query(query: str):
         )
         vector = response.data[0].embedding
 
-        logger.info(f"[embed_query] Embedded query: {query}")
+        logger.info(f"Embedded query: {query}")
 
         return vector
     except Exception as e:
@@ -219,7 +219,7 @@ def generate_answer(retreived_chunks, question):
 
     system_prompt, user_prompt = build_prompt(retreived_chunks, question)
 
-    logger.info("[generate_answer] Calling OpenAI API to generate answer...")
+    logger.info("Calling OpenAI API to generate answer...")
     try:
         response = client.chat.completions.create(
             model="gpt-4o-mini",

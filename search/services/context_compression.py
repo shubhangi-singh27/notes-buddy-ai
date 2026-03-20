@@ -151,7 +151,7 @@ def compress_context(
         compressed_text = " ".join(s[1] for s in selected_sentences)
 
         compressed_chunk = chunk.copy()
-        compressed_chunk["text"] = compress_text
+        compressed_chunk["text"] = compressed_text
 
         compressed_chunks.append(compressed_chunk)
         total_tokens_after += count_tokens(compressed_text)

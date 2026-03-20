@@ -21,6 +21,7 @@ class Document(models.Model):
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='uploaded')
     extracted_text = models.TextField(blank=True, null=True)
     file_type = models.CharField(max_length=20, blank=True, null=True)
+    total_chunks = models.IntegerField(default=0)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

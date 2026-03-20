@@ -53,6 +53,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'notes_buddy.core.middleware.RequestIDMiddleware',
+    'notes_buddy.core.middleware.RequestLoggingMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
@@ -169,6 +170,10 @@ CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 
+
+LOG_DIR = BASE_DIR / 'logs'
+LOG_DIR.mkdir(exist_ok=True)
+
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
@@ -177,12 +182,22 @@ LOGGING = {
             "class": "logging.StreamHandler",
             "formatter": "verbose",
             "filters": ["request_id"],
+        },
+        "file": {
+            "class": "logging.handlers.TimedRotatingFileHandler",
+            "filename": str(LOG_DIR/"notes_buddy.log"),
+            "when": "midnight",
+            "interval": 1,
+            "backupCount": 2,
+            "formatter": "verbose",
+            "filters": ["request_id"],
         }
     },
     "formatters": {
         "verbose":{
             "format": (
                 "%(asctime)s | %(levelname)s | %(name)s | "
+                "%(filename)s:%(funcName)s:%(lineno)d |"
                 "request_id=%(request_id)s | %(message)s"
             )
         }
@@ -193,26 +208,26 @@ LOGGING = {
         }
     },
     "root": {
-        "handlers": ["console"],
+        "handlers": ["console", "file"],
         "level": "INFO"
     },
     "loggers": {
         "documents": {
-            "handlers": ["console"],
+            "handlers": ["console", "file"],
             "level": "INFO",
             "propagate": False,
         },
         "search": {
-            "handlers": ["console"],
+            "handlers": ["console", "file"],
             "level": "INFO",
             "propagate": False,
         },
         "summary": {
-            "handlers": ["console"],
+            "handlers": ["console", "file"],
             "level": "INFO",
             "propagate": False,
         }
-    }
+    },
 }
 
 # CORS settings

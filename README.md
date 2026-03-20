@@ -126,8 +126,6 @@ docker compose up
 ```
 
 ### Option B: Local Setup (Not Recommended for Production Parity)
----
-
 
 ```bash
 

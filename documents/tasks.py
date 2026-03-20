@@ -8,8 +8,12 @@ import logging
 import time
 from django.contrib.postgres.search import SearchVector
 from billiard.exceptions import SoftTimeLimitExceeded
+from django.db.models import Count
 
 logger = logging.getLogger("documents")
+
+BATCH_SIZE = 100
+
 
 @shared_task(bind=True, autoretry_for=(Exception,), retry_backoff=30, retry_kwargs={"max_retries": 3}, soft_time_limit=180,)
 def process_document(self, document_id, request_id=None):
@@ -17,7 +21,7 @@ def process_document(self, document_id, request_id=None):
         from notes_buddy.core.middleware import _request_id
         _request_id.value = request_id
 
-    logger.info(f"[process_document] Started for document {document_id}")
+    logger.info(f"Started for document {document_id}")
     try:
         doc = Document.objects.get(id=document_id)
     except Document.DoesNotExist:
@@ -25,15 +29,15 @@ def process_document(self, document_id, request_id=None):
         return
 
     file_path = doc.file.path
-    logger.info(f"[process_document] Extracting text from: {file_path}")
+    logger.info(f"Extracting text from: {file_path}")
 
     try:
         # Extract text from the document
         text = extract_text(file_path)
-        logger.info(f"[extract] Text extracted ({len(text)} chars)")
+        logger.info(f"Text extracted ({len(text)} chars)")
 
         save_extracted_text(doc, text)
-        logger.info(f"[extract] Saved extracted text to file")
+        logger.info(f"Saved extracted text to file")
 
         doc.extracted_text = text
         doc.status = "extracted"
@@ -44,30 +48,27 @@ def process_document(self, document_id, request_id=None):
 
         # Chunk the text
         chunks = chunk_text(text)
-        logger.info(f"[chunk] Created {len(chunks)} chunks")
+        logger.info(f"Created {len(chunks)} chunks")
 
-        for idx, chunk in enumerate(chunks):
-            DocumentChunk.objects.create(
-                document=doc,
-                chunk_index=idx,
-                text=chunk,
-                embedding=None,
+        # Split chunks into batches
+        total_chunks = len(chunks)
+        for i in range(0, total_chunks, BATCH_SIZE):
+            batch = chunks[i:i+BATCH_SIZE]
+
+            process_chunk_batch.delay(
+                document_id=document_id,
+                chunks_batch=batch,
+                start_index=i,
+                request_id=request_id,
             )
 
-        DocumentChunk.objects.filter(document=doc).update(
-            search_vector=SearchVector("text")
-        )
-
-        print(f"Created {len(chunks)} chunks for {doc.original_file_name}")
-
-        # Generate embeddings for the chunks
-        logger.info(f"[process_document] Triggering embedding task for doc {document_id}")
-        generate_embeddings_task.delay(document_id, request_id)
+        doc.status = "processing_chunks"
+        doc.save(update_fields=["total_chunks", "status"])
 
         return {"status": "embedded", "document_id": doc.id}
 
     except SoftTimeLimitExceeded:
-        logger.warning(f"[process_document] Soft time limit exceeded for document {document_id}")
+        logger.warning(f"Soft time limit exceeded for document {document_id}")
         Document.objects.filter(id=document_id).update(status="processing_delayed")
         raise
     
@@ -77,7 +78,62 @@ def process_document(self, document_id, request_id=None):
         doc.save()
         return {"status": "failed", "document_id": doc.id}
 
+
 @shared_task
+def process_chunk_batch(document_id, chunks_batch, start_index, request_id=None):
+    if request_id:
+        from notes_buddy.core.middleware import _request_id
+        _request_id.value = request_id
+
+    logger.info(f"Started for document {document_id} with batch size {len(chunks_batch)} and start index {start_index}")
+
+    # Bulk create chunks
+    chunk_objects = [
+        DocumentChunk(
+            document_id=document_id,
+            chunk_index=start_index + idx,
+            text=chunk,
+            embedding=None,
+        )
+        for idx, chunk in enumerate(chunks_batch)
+    ]
+
+    DocumentChunk.objects.bulk_create(chunk_objects, batch_size=BATCH_SIZE)
+
+    texts = [c.text for c in chunk_objects]
+
+    vectors = embed_texts(texts)
+
+    for obj, vector in zip(chunk_objects, vectors):
+        obj.embedding = vector
+
+    DocumentChunk.objects.bulk_update(chunk_objects, ["embedding"], batch_size=BATCH_SIZE)
+
+    total_chunks = DocumentChunk.objects.filter(document_id=document_id).count()
+
+    doc = Document.objects.get(id=document_id)
+
+    processed_chunks = DocumentChunk.objects.filter(
+        document_id=document_id, 
+        embedding__isnull=False
+    ).count() 
+
+    if processed_chunks == total_chunks:
+        updated = Document.objects.filter(
+            id=document_id
+        ).exclude(status="ready").update(status="ready")
+        
+        if updated:
+            doc.status = "ready"
+            doc.save(update_fields=["status"])
+            logger.info(f"Document {document_id} marked as ready")
+            generate_summary_task.delay(document_id, request_id)
+
+
+# Commented out because we are using process_chunk_batch in order to implement batching
+# for large documents
+
+"""@shared_task
 def generate_embeddings_task(document_id, request_id=None):
     if request_id:
         from notes_buddy.core.middleware import _request_id
@@ -117,12 +173,14 @@ def generate_embeddings_task(document_id, request_id=None):
 
     except Exception as e:
         logger.exception(f"[generate_embeddings_task] Embedding generation failed for document {document_id}: {e}")
-        return False
+        return False"""
 
-@shared_task
+# Commented out because we are using process_chunk_batch in order to implement batching
+# for large documents
+"""@shared_task
 def mark_document_ready(document_id, request_id=None):
     Document.objects.filter(id=document_id).update(status="ready")
 
     logger.info(f"[mark_document_ready] Document {document_id} marked as ready")
 
-    generate_summary_task.delay(document_id, request_id)
+    generate_summary_task.delay(document_id, request_id)"""

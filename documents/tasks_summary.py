@@ -53,14 +53,14 @@ def generate_summary_task(document_id, request_id=None):
     try:
         doc = Document.objects.get(id=document_id)
     except Document.DoesNotExist:
-        logger.error(f"[Summary Task] Document {document_id} not found")
+        logger.error(f" Document {document_id} not found")
         return False
 
     if not doc.extracted_text or len(doc.extracted_text.strip()) < 20:
-        logger.error(f"[Summary Task] Document {document_id} has no extracted text to summarize")
+        logger.error(f" Document {document_id} has no extracted text to summarize")
         return False
 
-    logger.info(f"[Summary Task] Generating summary for {doc.original_file_name}...")
+    logger.info(f"Generating summary for {doc.original_file_name}...")
 
     try:
         response = client.chat.completions.create(
@@ -119,9 +119,9 @@ def generate_summary_task(document_id, request_id=None):
         doc.summary_generated_at = timezone.now()
         doc.save(update_fields=["short_summary", "detailed_summary", "summary_generated_at"])
 
-        logger.info(f"[Summary Task] Summary generated for {doc.original_file_name}")
+        logger.info(f"Summary generated for {doc.original_file_name}")
         return True
 
     except Exception as e:
-        logger.exception(f"[Summary Task] Error generating summary for {doc.original_file_name}: {e}")
+        logger.exception(f"Error generating summary for {doc.original_file_name}: {e}")
         return False
