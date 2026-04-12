@@ -7,6 +7,11 @@ logger = logging.getLogger(__name__)
 
 _request_id = threading.local()
 
+REQUEST_LOG_EXCLUDE = [
+    ("/api/health", "GET"),
+    ("/api/documents", "GET"),
+]
+
 def get_request_id():
     return getattr(_request_id, "value", None)
 
@@ -28,6 +33,14 @@ class RequestLoggingMiddleware:
 
     def __call__(self, request):
         if not request.path.startswith("/api/"):
+            return self.get_response(request)
+
+        path_normalized = request.path.rstrip("/") or "/"
+
+        if any(
+            path_normalized == p.rstrip("/") and request.method == m
+            for p, m in REQUEST_LOG_EXCLUDE
+        ):
             return self.get_response(request)
 
         start = time.time()

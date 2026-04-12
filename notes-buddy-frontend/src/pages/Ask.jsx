@@ -61,8 +61,12 @@ export default function Ask() {
 
                     <h3 className="mt-4 font-semibold">Sources</h3>
                     <ul className="list-disc ml-6">
-                        {answer.sources.map((s, i) => (
-                            <li key={i}>{s}</li>
+                        {(answer.sources || []).map((s, i) => (
+                            <li key={i}>
+                                {typeof s === "object"
+                                    ? `${s.document_name || "Unknown"} - chunk ${s.chunk_index ?? i}`
+                                    : String(s)}
+                            </li>
                         ))}
                     </ul>
                 </div>

@@ -4,6 +4,7 @@ from rest_framework.permissions import IsAuthenticated
 
 from .services.search_engine import embed_query, search_similar_chunks, generate_answer, rerank_chunks
 from .services.context_compression import compress_context
+from .services.query_rewrite import rewrite_query
 import logging
 
 logger = logging.getLogger(__name__)
@@ -32,10 +33,12 @@ class AnswerView(APIView):
         question = request.data.get("question")
         document_id = request.data.get("document_id")
 
+        rewritten_question = rewrite_query(question)
+
         if not question:
             return Response({"error": "Missing question"}, status=400)
 
-        query_vector = embed_query(question)
+        query_vector = embed_query(rewritten_question)
 
         if document_id:
             retrieved_chunks = search_similar_chunks(
@@ -45,7 +48,7 @@ class AnswerView(APIView):
                 top_k=3,
                 document_id=document_id,   # NEW
             )
-            reranked_chunks = rerank_chunks(question, retrieved_chunks)
+            reranked_chunks = rerank_chunks(rewritten_question, retrieved_chunks)
         else:
             retrieved_chunks = search_similar_chunks(
                 user=request.user,
@@ -53,7 +56,7 @@ class AnswerView(APIView):
                 question=question,
                 top_k=12,
             )
-            reranked_chunks = rerank_chunks(question, retrieved_chunks)
+            reranked_chunks = rerank_chunks(rewritten_question, retrieved_chunks)
 
         # Diversify chunks to avoid using the same document too many times
         diversified = []
@@ -62,7 +65,6 @@ class AnswerView(APIView):
         logger.info(
             f"Retrieved {len(retrieved_chunks)} chunks, kept {len(reranked_chunks)}"
         )
-
 
         for chunk in reranked_chunks:
             doc_id = chunk["document_id"]

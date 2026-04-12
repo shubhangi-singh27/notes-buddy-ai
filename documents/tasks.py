@@ -34,6 +34,7 @@ def process_document(self, document_id, request_id=None):
     try:
         # Extract text from the document
         text = extract_text(file_path)
+        logger.info(f"Text extracted: {text[:2000]}")
         logger.info(f"Text extracted ({len(text)} chars)")
 
         save_extracted_text(doc, text)

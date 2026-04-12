@@ -194,6 +194,8 @@ def build_prompt(chunks, question):
         [f"[{c['document_name']} - (chunk {c['chunk_index']})]: {c['text']}" for c in chunks]
     )
 
+    # logger.info(f"Context: \n {context_text[:1000]}")
+
     prompt_path = os.path.join(
         settings.BASE_DIR, "search", "prompts", "answer_prompt.txt"
     )
