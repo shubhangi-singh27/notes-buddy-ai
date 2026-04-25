@@ -79,9 +79,9 @@ class AnswerView(APIView):
 
         chunks = diversified
 
-        compressed_chunks = compress_context(chunks, question, query_vector)
+        compressed_chunks, _, _ = compress_context(chunks, rewritten_question, query_vector)
 
-        result = generate_answer(chunks, question)
+        result = generate_answer(compressed_chunks, rewritten_question)
 
         return Response({
             "question": question,

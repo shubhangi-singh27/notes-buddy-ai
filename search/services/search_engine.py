@@ -1,4 +1,5 @@
 import os
+import re
 import logging
 from openai import OpenAI
 from django.conf import settings
@@ -148,46 +149,54 @@ def rerank_chunks(question, chunks, keep_top=4):
         {c["text"][:800]}
         """
 
-        prompt = f"""
-        You are helping select context for answering a question.
+    prompt = f"""
+You are helping select context for answering a question.
 
-        Question:
-        {question}
+Question:
+{question}
 
-        Below are retrieved text chunks from user's notes.
-        Select the MOST relevant chunks for answering the question.
+Below are retrieved text chunks from user's notes.
+Select the MOST relevant chunks for answering the question.
 
-        Return ONLY the chunks numbers in order of usefulness.
-        Example output: 2, 5, 1, 0
+Return ONLY the chunks numbers in order of usefulness.
+Example output: 2, 5, 1, 0
 
-        Chunks:
-        {numbered_chunks}
-        """
+Chunks:
+{numbered_chunks}
+"""
 
-        try:
-            response = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0
+        )
+
+        msg = response.choices[0].message.content
+
+        if isinstance(msg, str):
+            content = msg
+        else:
+            content = "".join(
+                block.text for block in msg if hasattr(block, "text")
             )
 
-            content = response.choices[0].message.content
-            try:
-                indices = [int(x.strip()) for x in content.split(",")]
-            except:
-                logger.warning("[rerank] Failed to parse rerank response")
-                return chunks[:keep_top]
+        try:
+            indices = [int(x) for x in re.findall(r"\d+", content)]
+        except:
+            logger.warning("[rerank] Failed to parse rerank response")
+            return chunks[:keep_top]
 
-            selected = []
-            for idx in indices:
-                if 0 <= idx < len(chunks):
-                    selected.append(chunks[idx])
+        selected = []
+        for idx in indices:
+            if 0 <= idx < len(chunks):
+                selected.append(chunks[idx])
 
-            return selected[:keep_top]
-        
-        except Exception as e:
-            logger.error(f"[rerank] Failed rerank response")
-            return ""
+        return selected if selected else chunks[:keep_top]
+    
+    except Exception as e:
+        logger.error(f"[rerank] Failed rerank response: {str(e)}")
+        return chunks[:keep_top]
 
 def build_prompt(chunks, question):
     context_text = "\n\n".join(

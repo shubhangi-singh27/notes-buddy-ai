@@ -12,6 +12,7 @@ dependencies = [
     "djangorestframework>=3.16.1",
     "djangorestframework-simplejwt>=5.5.1",
     "openai>=2.8.1",
+    "openpyxl>=3.1.5",
     "pgvector>=0.4.1",
     "psycopg[binary]>=3.2.12",
     "pymupdf>=1.27.2.2",

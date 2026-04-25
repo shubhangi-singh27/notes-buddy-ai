@@ -86,10 +86,10 @@ def compress_context(
     chunks: List[Dict[str, Any]],
     question: str,
     question_vector: List[float] = None
-) -> List[Dict[str, Any]]:
+) -> tuple[list[dict[str, Any]], int, int]:
 
     if not chunks:
-        return []
+        return [], 0, 0
 
     question_tokens = set(tokenize_words(question))
 
@@ -134,7 +134,7 @@ def compress_context(
         selected_sentences = []
         selected_token_count = 0
 
-        for idx, sentence, socre in scored_sentences[:MIN_SENTENCE_PER_CHUNK]:
+        for idx, sentence, score in scored_sentences[:MIN_SENTENCE_PER_CHUNK]:
             sentence_tokens = count_tokens(sentence)
             selected_sentences.append((idx, sentence, score))
             selected_token_count += sentence_tokens
@@ -187,4 +187,4 @@ def compress_context(
         reduction,
     )
     
-    return compressed_chunks
+    return compressed_chunks, total_tokens_before, total_tokens_after
