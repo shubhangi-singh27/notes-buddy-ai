@@ -1,6 +1,7 @@
 import os
 import re
 import logging
+import json
 from openai import OpenAI
 from django.conf import settings
 from documents.models import DocumentChunk
@@ -34,7 +35,7 @@ def embed_query(query: str):
         logger.exception(f"[embed_query] Failed to embed query: {e}")
         raise RuntimeError(f"Failed to embed query: {e}")
 
-def search_similar_chunks(user, query_vector, question, top_k=5, document_id=None):
+def search_similar_chunks(user, query_vector, question, top_k=5, document_id=None, vector_limit=20, fts_limit=20):
     if not isinstance(query_vector, list) or len(query_vector) != 1536:
         raise ValueError("Query vector must be python list of length 1536")
 
@@ -49,7 +50,8 @@ def search_similar_chunks(user, query_vector, question, top_k=5, document_id=Non
                 d.original_file_name,
                 dc.chunk_index,
                 dc.text,
-                1 - (dc.embedding <=> %s::vector) AS similarity
+                1 - (dc.embedding <=> %s::vector) AS similarity,
+                dc.embedding
             FROM documents_documentchunk dc
             JOIN documents_document d ON dc.document_id = d.id
             WHERE d.user_id = %s
@@ -59,23 +61,26 @@ def search_similar_chunks(user, query_vector, question, top_k=5, document_id=Non
             ORDER BY dc.embedding <=> %s::vector
             LIMIT %s;
             """,
-            [query_vector, user.id, document_id, document_id, query_vector, top_k]
+            [query_vector, user.id, document_id, document_id, query_vector, vector_limit]
         )
 
         rows = cursor.fetchall()
 
-        vector_results = {
-            row[0]:{
+        vector_results = [
+            {
                 "chunk_id": row[0],
                 "document_id": row[1],
                 "document_name": row[2],
                 "chunk_index": row[3],
                 "text": row[4],
                 "vector_score": float(row[5]),
+                "embedding": row[6],
                 "fts_score": 0.0
             }
             for row in rows
-        }
+        ]
+
+        vector_results.sort(key=lambda x: x["vector_score"], reverse=True)
 
 ################## Full Text Search ##################
 
@@ -93,73 +98,97 @@ def search_similar_chunks(user, query_vector, question, top_k=5, document_id=Non
     fts_queryset = (
         fts_queryset
         .annotate(rank=SearchRank(F("search_vector"), ts_query))
-        .order_by("-rank")[:top_k]
+        .filter(rank__gte=0.05)
+        .order_by("-rank")[:fts_limit]
     )
 
-    for chunk in fts_queryset:
-        if chunk.id in vector_results:
-            vector_results[chunk.id]["fts_score"] = float(chunk.rank)
-        else:
-            vector_results[chunk.id] = {
-                "chunk_id": chunk.id,
-                "document_id": chunk.document_id,
-                "document_name": chunk.document.original_file_name,
-                "chunk_index": chunk.chunk_index,
-                "text": chunk.text,
-                "vector_score": 0.0,
-                "fts_score": float(chunk.rank),
-            }
+    fts_results = [
+        {
+            "chunk_id": chunk.id,
+            "document_id": chunk.document_id,
+            "document_name": chunk.document.original_file_name,
+            "chunk_index": chunk.chunk_index,
+            "text": chunk.text,
+            "vector_score": 0.0,
+            "fts_score": float(chunk.rank),
+        }
+        for chunk in fts_queryset
+    ]
+    
+    fts_results.sort(key = lambda x: x["fts_score"], reverse=True)
 
 ################## Normalize + Merge Results ##################
     if not vector_results:
         return []
 
-    max_vector = max(v["vector_score"] for v in vector_results.values()) or 1
-    max_fts = max(v["fts_score"] for v in vector_results.values()) or 1
+    RRF_K = 60
 
-    merged = []
+    rrf_scores = {}
 
-    for chunk in vector_results.values():
-        norm_vector = chunk["vector_score"] / max_vector if max_vector else 0
-        norm_fts = chunk["fts_score"] / max_fts if max_fts else 0
+    for rank, chunk in enumerate(vector_results):
+        cid = chunk["chunk_id"]
+        rrf_scores.setdefault(cid, chunk.copy())
+        rrf_scores[cid]["rrf_score"] = rrf_scores[cid].get("rrf_score", 0) + (1 / (RRF_K + rank + 1))
 
-        combined_score = 0.6*norm_vector + 0.4*norm_fts
+    for rank, chunk in enumerate(fts_results):
+        cid = chunk["chunk_id"]
+        if cid not in rrf_scores:
+            rrf_scores[cid] = chunk.copy()
+        else:
+            rrf_scores[cid]["vector_score"] = max(rrf_scores[cid].get("vector_score"), chunk.get("vector_score", 0.0))    
+            rrf_scores[cid]["fts_score"] = max(rrf_scores[cid].get("fts_score", 0.0), chunk.get("fts_score", 0.0))
+        
+        rrf_scores[cid]["rrf_score"] = rrf_scores[cid].get("rrf_score", 0) + (1 / (RRF_K + rank + 1))
 
-        merged.append({
-            "chunk_id": chunk["chunk_id"],
-            "document_id": chunk["document_id"],
-            "document_name": chunk["document_name"],
-            "chunk_index": chunk["chunk_index"],
-            "text": chunk["text"],
-            "similarity": combined_score,
-        })
+    merged = sorted(rrf_scores.values(), key=lambda x: x["rrf_score"], reverse = True)
 
-    merged.sort(key=lambda x: x["similarity"], reverse=True)
+    return [
+        {
+            "chunk_id": c["chunk_id"],
+            "document_id": c["document_id"],
+            "document_name": c["document_name"],
+            "chunk_index": c["chunk_index"],
+            "text": c["text"],
+            "similarity": c["rrf_score"],
+            "vector_score": c.get("vector_score", 0.0),
+            "fts_score": c.get("fts_score", 0.0),
+        }
+        for c in merged[:top_k]
+    ]
 
     return merged[:top_k]
 
-def rerank_chunks(question, chunks, keep_top=4):
+def rerank_chunks(question, chunks, keep_top=8):
     if not chunks:
         return []
 
+    chunks = chunks[:keep_top]
+
     numbered_chunks = ""
     for i, c in enumerate(chunks):
-        numbered_chunks += f"""
-        Chunk {i}:
-        {c["text"][:800]}
-        """
+        text = c["text"][:500]
+        numbered_chunks += f"""\nChunk {i}:\n{text}\n"""
 
     prompt = f"""
-You are helping select context for answering a question.
+You are scoring relevance of context chunks for answering a question.
 
 Question:
 {question}
 
-Below are retrieved text chunks from user's notes.
-Select the MOST relevant chunks for answering the question.
+For each chunk, assign a relevance score between 0 and 1.
 
-Return ONLY the chunks numbers in order of usefulness.
-Example output: 2, 5, 1, 0
+Scoring guidelines:
+- 1.0 = directly answers the question
+- 0.7 = contains useful supporting information
+- 0.4 = partially relevant
+- 0.0 = irrelevant
+
+Return ONLY valid JSON in this format:
+
+[
+  {{"chunk_id": 0, "score": 0.9}},
+  {{"chunk_id": 1, "score": 0.2}}
+]
 
 Chunks:
 {numbered_chunks}
@@ -172,27 +201,37 @@ Chunks:
             temperature=0
         )
 
-        msg = response.choices[0].message.content
+        content = response.choices[0].message.content
 
-        if isinstance(msg, str):
-            content = msg
-        else:
+        if not isinstance(content, str):
             content = "".join(
-                block.text for block in msg if hasattr(block, "text")
+                block.text for block in content if hasattr(block, "text")
             )
+        
+        clean = content.strip()
+        if clean.startswith("```"):
+            clean = re.sub(r"^```(?:json)?\s*", "", clean)
+            clean = re.sub(r"\s*```$", "", clean)
 
-        try:
-            indices = [int(x) for x in re.findall(r"\d+", content)]
-        except:
-            logger.warning("[rerank] Failed to parse rerank response")
+        parsed = json.loads(clean)
+
+        scored_chunks = []
+        for item in parsed:
+            idx = item.get("chunk_id")
+            score = item.get("score", 0)
+
+            if isinstance(idx, int) and 0 <= idx < len(chunks):
+                chunk = chunks[idx].copy()
+                chunk["rerank_score"] = score
+                scored_chunks.append(chunk)
+
+        if not scored_chunks:
             return chunks[:keep_top]
 
-        selected = []
-        for idx in indices:
-            if 0 <= idx < len(chunks):
-                selected.append(chunks[idx])
 
-        return selected if selected else chunks[:keep_top]
+        scored_chunks.sort(key=lambda x: x["rerank_score"], reverse=True)
+
+        return scored_chunks[:keep_top]
     
     except Exception as e:
         logger.error(f"[rerank] Failed rerank response: {str(e)}")

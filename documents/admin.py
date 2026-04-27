@@ -41,7 +41,7 @@ class DocumentAdmin(admin.ModelAdmin):
         "summary_generated_at",
     )
 
-    inlines = [DocumentChunkInline]
+    # inlines = [DocumentChunkInline]
 
     def extracted_text_preview(self, obj):
         if not obj.extracted_text:

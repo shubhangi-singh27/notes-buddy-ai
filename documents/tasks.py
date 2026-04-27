@@ -9,6 +9,7 @@ import time
 from django.contrib.postgres.search import SearchVector
 from billiard.exceptions import SoftTimeLimitExceeded
 from django.db.models import Count
+from django.contrib.postgres.search import SearchVector
 
 logger = logging.getLogger("documents")
 
@@ -94,7 +95,7 @@ def process_chunk_batch(document_id, chunks_batch, start_index, request_id=None)
             document_id=document_id,
             chunk_index=start_index + idx,
             text=chunk,
-            embedding=None,
+            embedding=None
         )
         for idx, chunk in enumerate(chunks_batch)
     ]
@@ -109,6 +110,11 @@ def process_chunk_batch(document_id, chunks_batch, start_index, request_id=None)
         obj.embedding = vector
 
     DocumentChunk.objects.bulk_update(chunk_objects, ["embedding"], batch_size=BATCH_SIZE)
+    DocumentChunk.objects.filter(
+        document_id=document_id,
+        chunk_index__gte=start_index,
+        chunk_index__lt=start_index + BATCH_SIZE
+    ).update(search_vector=SearchVector("text"))
 
     total_chunks = DocumentChunk.objects.filter(document_id=document_id).count()
 

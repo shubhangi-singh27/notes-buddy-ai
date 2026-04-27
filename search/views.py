@@ -19,7 +19,14 @@ class SemanticSearchView(APIView):
 
         vector = embed_query(query)
 
-        results = search_similar_chunks(request.user, vector, query)
+        results = search_similar_chunks(
+            request.user, 
+            vector, 
+            query,
+            top_k=3,
+            vector_limit=20,
+            fts_limit=20
+        )
 
         return Response({
             "query": query,
@@ -44,8 +51,10 @@ class AnswerView(APIView):
             retrieved_chunks = search_similar_chunks(
                 user=request.user,
                 query_vector=query_vector,
-                question=question,
-                top_k=3,
+                question=rewritten_question,
+                top_k=10,
+                vector_limit=20,
+                fts_limit=20,
                 document_id=document_id,   # NEW
             )
             reranked_chunks = rerank_chunks(rewritten_question, retrieved_chunks)
@@ -53,8 +62,10 @@ class AnswerView(APIView):
             retrieved_chunks = search_similar_chunks(
                 user=request.user,
                 query_vector=query_vector,
-                question=question,
+                question=rewritten_question,
                 top_k=12,
+                vector_limit=20,
+                fts_limit=20
             )
             reranked_chunks = rerank_chunks(rewritten_question, retrieved_chunks)
 
@@ -66,7 +77,7 @@ class AnswerView(APIView):
             f"Retrieved {len(retrieved_chunks)} chunks, kept {len(reranked_chunks)}"
         )
 
-        for chunk in reranked_chunks:
+        """for chunk in reranked_chunks:
             doc_id = chunk["document_id"]
             used = doc_usage.get(doc_id, 0)
 
@@ -75,9 +86,10 @@ class AnswerView(APIView):
                 doc_usage[doc_id] = used + 1
 
             if len(diversified) >= 5:
-                break
+                break"""
 
-        chunks = diversified
+        # Implemented Diversification in compress_context function
+        chunks = reranked_chunks
 
         compressed_chunks, _, _ = compress_context(chunks, rewritten_question, query_vector)
 
